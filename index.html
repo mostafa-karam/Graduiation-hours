@@ -352,6 +352,7 @@
 
     .summary .row {
       display: flex;
+      flex-wrap: wrap;
       justify-content: space-between;
       align-items: center;
       padding: 11px 0;
@@ -912,6 +913,18 @@
       background: #FFF5F4
     }
 
+    .summary-metrics {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .summary .row .remaining {
+      white-space: nowrap;
+      font-size: .68rem;
+    }
+
     .hero-total {
       text-align: center;
       margin: 4px 0 24px;
@@ -934,6 +947,13 @@
       color: var(--muted);
       font-weight: 800;
       letter-spacing: 0
+    }
+
+    .remaining-count {
+      margin-top: 10px;
+      color: var(--primary-2);
+      font-size: .86rem;
+      font-weight: 900;
     }
 
     .bar {
@@ -1189,7 +1209,7 @@
       { id: 'fr', name: 'مواد إجباري كلية', mode: 'all', total: 48, desc: 'لازم تخلص كل المواد ال١٦ (٣ ساعات لكل مادة).' },
       { id: 'dr', name: 'مواد إجباري قسم', mode: 'all', total: 48, desc: 'لازم تخلص كل المواد ال١٦ (٣ ساعات لكل مادة).' },
       { id: 'ue', name: 'مواد جامعة اختيارية', mode: 'uni', total: 10, need: 5, desc: 'لازم Critical Thinking و Innovation & Entrepreneurship + أي ٣ مواد جامعة تانية (٢ ساعة لكل مادة).' },
-      { id: 'fe', name: 'مواد اختياري كلية', mode: 'choose', total: 12, need: 4, desc: 'اختار ٤ بس من دول (٣ ساعات لكل مادة).' },
+      { id: 'fe', name: 'مواد اختياري كلية', mode: 'choose', total: 12, need: 4, desc: 'اختار ٤ مواد (٣ ساعات لكل مادة)، وممكن تضيف مادة من قسم تاني تُحسب اختياري كلية.' },
       { id: 'de', name: 'مواد اختياري قسم', mode: 'choose', total: 12, need: 4, desc: 'اختار ٤ بس من دول (٣ ساعات لكل مادة).' },
       { id: 'tr', name: 'تدريبات', mode: 'all', total: 4, desc: 'تدريب ميداني I و II، إجباريين.' },
       { id: 'gp', name: 'مشروع التخرج', mode: 'all', total: 6, desc: 'مشروع التخرج I و II.' },
@@ -1200,6 +1220,7 @@
     let state = {};
     try { state = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { state = {}; }
     if (!state._uniExtra) state._uniExtra = [];
+    if (!state._feExtra) state._feExtra = [];
     if (typeof state._step !== 'number') state._step = 0;
 
     function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { } }
@@ -1221,8 +1242,9 @@
         const count = sec.items.filter(c => isChecked('ue', c.code)).length + extraChecked;
         return { hrs: Math.min(count * 2, sec.total), count, need: sec.need, ok: reqOk && count >= sec.need };
       }
-      const c = sec.items.filter(x => isChecked(sec.id, x.code)).length;
-      const hrs = sec.items.filter(x => isChecked(sec.id, x.code)).reduce((a, x) => a + x.hrs, 0);
+      const extraCourses = sec.id === 'fe' ? state._feExtra.filter(course => course.checked) : [];
+      const c = sec.items.filter(x => isChecked(sec.id, x.code)).length + extraCourses.length;
+      const hrs = sec.items.filter(x => isChecked(sec.id, x.code)).reduce((a, x) => a + x.hrs, 0) + extraCourses.length * 3;
       if (sec.mode === 'all') return { hrs, count: c, need: sec.items.length, ok: c >= sec.items.length };
       return { hrs: Math.min(hrs, sec.total), count: c, need: sec.need, ok: c >= sec.need };
     }
@@ -1251,12 +1273,17 @@
     function renderStepCard(sec) {
       const r = sectionResult(sec);
       const card = document.getElementById('card');
+      const extraConfig = sec.id === 'ue'
+        ? { key: '_uniExtra', inputId: 'ueAddInput', buttonId: 'ueAddBtn', hrs: 2, placeholder: 'اسم مادة جامعة اختيارية تانية' }
+        : sec.id === 'fe'
+          ? { key: '_feExtra', inputId: 'feAddInput', buttonId: 'feAddBtn', hrs: 3, placeholder: 'اسم مادة من قسم تاني تُحسب اختياري كلية' }
+          : null;
       card.innerHTML = `
     <h2>${sec.name}</h2>
     <p class="desc">${sec.desc}</p>
     <span class="req-badge">${r.hrs} / ${sec.total} ساعة</span>
     <ul class="items"></ul>
-    ${sec.id === 'ue' ? '<div class="addrow"><input type="text" id="ueAddInput" placeholder="اسم مادة جامعة اختيارية تانية"><button id="ueAddBtn">إضافة</button></div>' : ''}
+    ${extraConfig ? `<div class="addrow"><input type="text" id="${extraConfig.inputId}" placeholder="${extraConfig.placeholder}"><button id="${extraConfig.buttonId}">إضافة</button></div>` : ''}
     <p class="status-line ${r.ok ? 'ok' : 'need'}">${r.ok ? 'تمام، خلصت المطلوب في القسم ده ✓' : (sec.mode === 'all' ? `لسه فاضلك ${sec.items.length - r.count} مادة` : `اخترت ${r.count} من ${r.need} — لسه محتاج ${Math.max(0, r.need - r.count)}`)}</p>
     <div class="nav-row">
       ${state._step > 0 ? '<button class="btn btn-ghost" id="backBtn">رجوع</button>' : '<span style="flex:1"></span>'}
@@ -1268,30 +1295,44 @@
         li.innerHTML = `<label><input type="checkbox" ${isChecked(sec.id, c.code) ? 'checked' : ''} data-code="${c.code}"><span>${c.name}</span></label><span class="hrs">${c.hrs}h</span>`;
         ul.appendChild(li);
       });
-      if (sec.id === 'ue') {
-        state._uniExtra.forEach((extra, idx) => {
-          const li = document.createElement('li');
-          li.innerHTML = `<label><input type="checkbox" ${extra.checked ? 'checked' : ''} data-ue-extra="${idx}"><span>${extra.name}</span></label><span class="hrs">2h</span>`;
-          ul.appendChild(li);
+      const appendExtraCourse = (extra, idx) => {
+        const li = document.createElement('li');
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = extra.checked;
+        checkbox.dataset.extraIndex = idx;
+        const name = document.createElement('span');
+        name.textContent = extra.name;
+        const hours = document.createElement('span');
+        hours.className = 'hrs';
+        hours.textContent = `${extraConfig.hrs}h`;
+        label.append(checkbox, name);
+        li.append(label, hours);
+        checkbox.addEventListener('change', e => {
+          state[extraConfig.key][+e.target.dataset.extraIndex].checked = e.target.checked;
+          save();
+          updateStepStatus(sec);
         });
+        return li;
+      };
+      if (extraConfig) {
+        state[extraConfig.key].forEach((extra, idx) => ul.appendChild(appendExtraCourse(extra, idx)));
       }
       ul.querySelectorAll('input[data-code]').forEach(cb => {
         cb.addEventListener('change', e => { setChecked(sec.id, e.target.dataset.code, e.target.checked); updateStepStatus(sec); });
       });
-      ul.querySelectorAll('input[data-ue-extra]').forEach(cb => {
-        cb.addEventListener('change', e => { state._uniExtra[+e.target.dataset.ueExtra].checked = e.target.checked; save(); updateStepStatus(sec); });
-      });
-      const addBtn = card.querySelector('#ueAddBtn');
+      const addBtn = extraConfig && card.querySelector(`#${extraConfig.buttonId}`);
       if (addBtn) addBtn.addEventListener('click', () => {
-        const inp = card.querySelector('#ueAddInput');
-        if (inp.value.trim()) {
-          state._uniExtra.push({ name: inp.value.trim(), checked: true }); save();
-          const li = document.createElement('li');
-          const idx = state._uniExtra.length - 1;
-          li.innerHTML = `<label><input type="checkbox" checked data-ue-extra="${idx}"><span>${state._uniExtra[idx].name}</span></label><span class="hrs">2h</span>`;
-          ul.appendChild(li);
-          li.querySelector('input').addEventListener('change', e => { state._uniExtra[+e.target.dataset.ueExtra].checked = e.target.checked; save(); updateStepStatus(sec); });
-          inp.value = ''; updateStepStatus(sec);
+        const input = card.querySelector(`#${extraConfig.inputId}`);
+        const name = input.value.trim();
+        if (name) {
+          const extra = { name, checked: true };
+          state[extraConfig.key].push(extra);
+          save();
+          ul.appendChild(appendExtraCourse(extra, state[extraConfig.key].length - 1));
+          input.value = '';
+          updateStepStatus(sec);
         }
       });
       const backBtn = card.querySelector('#backBtn');
@@ -1309,7 +1350,20 @@
     }
 
     function sectionRemaining(sec) {
-      return sec.items.filter(c => !isChecked(sec.id, c.code));
+      const remaining = sec.items.filter(c => !isChecked(sec.id, c.code));
+      if (sec.id === 'fe') {
+        remaining.push(...state._feExtra.filter(course => !course.checked).map(course => ({ ...course, pre: [] })));
+      }
+      return remaining;
+    }
+
+    function remainingInSection(sec, result) {
+      if (sec.id === 'ue') {
+        const uncheckedRequired = sec.items.filter(c => !isChecked('ue', c.code)).length;
+        return Math.max(uncheckedRequired, result.need - result.count, 0);
+      }
+      const required = sec.mode === 'all' ? sec.items.length : result.need;
+      return Math.max(required - result.count, 0);
     }
 
     function renderSummary() {
@@ -1317,12 +1371,14 @@
       let total = 0;
       const done = completedSet();
       const rows = SECTIONS.map(sec => { const r = sectionResult(sec); total += r.hrs; return { sec, r }; });
+      const remainingCourses = rows.reduce((count, { sec, r }) => count + remainingInSection(sec, r), 0);
       const pct = Math.min(100, Math.round(total / 140 * 100));
 
       card.innerHTML = `
     <h2>ملخص ساعات التخرج</h2>
     <div class="hero-total">
       <div class="n">${total}<span> / 140 ساعة</span></div>
+      <div class="remaining-count">${remainingCourses} مادة متبقية</div>
       <div class="bar"><i style="width:${pct}%"></i></div>
     </div>
     <div id="summaryRows"></div>
@@ -1336,7 +1392,9 @@
         wrap.className = 'summary';
         const row = document.createElement('div');
         row.className = 'row';
-        row.innerHTML = `<b>${sec.name}</b><span class="${r.ok ? 'ok' : 'need'}">${r.hrs}/${sec.total}h ${r.ok ? '✓' : '✗'}</span>`;
+        const remaining = remainingInSection(sec, r);
+        const remainingLabel = remaining === 1 ? 'مادة' : 'مواد';
+        row.innerHTML = `<b>${sec.name}</b><div class="summary-metrics"><span class="${r.ok ? 'ok' : 'need'}">${r.hrs}/${sec.total}h ${r.ok ? '✓' : '✗'}</span><span class="remaining ${remaining ? 'need' : 'ok'}">باقي ${remaining} ${remainingLabel}</span></div>`;
         wrap.appendChild(row);
         if (!r.ok) {
           const remaining = sectionRemaining(sec);
@@ -1355,7 +1413,7 @@
       });
       card.querySelector('#backBtn').addEventListener('click', () => { state._step = SECTIONS.length - 1; save(); render(); window.scrollTo(0, 0); });
       card.querySelector('#resetBtn').addEventListener('click', () => {
-        if (confirm('متأكد؟ هيتم مسح كل الاختيارات.')) { state = { _uniExtra: [], _step: 0 }; save(); render(); window.scrollTo(0, 0); }
+        if (confirm('متأكد؟ هيتم مسح كل الاختيارات.')) { state = { _uniExtra: [], _feExtra: [], _step: 0 }; save(); render(); window.scrollTo(0, 0); }
       });
     }
 
